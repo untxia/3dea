@@ -1,0 +1,117 @@
+// 3DEA — schéma de la bibliothèque de modèles 3D
+// SQLite par défaut : aucun serveur à installer. Pour PostgreSQL, remplacez
+// provider par "postgresql" et pointez DATABASE_URL sur votre instance.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+/// Une pièce de la bibliothèque : soit un fichier géométrique, soit une
+/// fiche pointant vers une page (Printables, Thingiverse…) dont le fichier
+/// n'a pas encore été joint.
+model Model {
+  id    String @id @default(cuid())
+  title String
+
+  /// FILE = géométrie disponible · LINK = fiche sans fichier
+  kind   String  @default("FILE")
+  format String? // stl | obj
+
+  // ---- fichier ----
+  fileName String?
+  fileSize Int?
+  filePath String? // chemin relatif dans storage/
+
+  // ---- géométrie mesurée (millimètres) ----
+  width     Float?
+  depth     Float?
+  height    Float?
+  volume    Float? // mm³
+  area      Float? // mm²
+  triangles Int?
+
+  // ---- provenance ----
+  sourceUrl String? @unique
+  platform  String?
+  author    String?
+  licence   String?
+  price     String?
+  summary   String?
+  category  String?
+
+  favorite Boolean @default(false)
+
+  tags  TagOnModel[]
+  notes Note[]
+  jobs  PrintJob[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([kind])
+  @@index([platform])
+  @@index([category])
+}
+
+model Tag {
+  id     String       @id @default(cuid())
+  name   String       @unique
+  models TagOnModel[]
+}
+
+/// Table de jointure explicite : permet d'ajouter plus tard un ordre ou
+/// une date d'étiquetage sans migration destructrice.
+model TagOnModel {
+  modelId String
+  tagId   String
+  model   Model  @relation(fields: [modelId], references: [id], onDelete: Cascade)
+  tag     Tag    @relation(fields: [tagId], references: [id], onDelete: Cascade)
+
+  @@id([modelId, tagId])
+  @@index([tagId])
+}
+
+/// Notes d'atelier attachées à une pièce : réglages qui ont marché,
+/// défauts observés, rappels.
+model Note {
+  id        String   @id @default(cuid())
+  body      String
+  modelId   String
+  model     Model    @relation(fields: [modelId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+
+  @@index([modelId])
+}
+
+/// Chaque estimation lancée depuis la fiche technique est archivée ici :
+/// on garde l'historique des paramètres et de la consommation.
+model PrintJob {
+  id      String @id @default(cuid())
+  modelId String
+  model   Model  @relation(fields: [modelId], references: [id], onDelete: Cascade)
+
+  material      String
+  infill        Int
+  layerHeight   Float
+  wallThickness Float
+
+  grams   Float
+  meters  Float
+  cost    Float
+  minutes Int
+
+  createdAt DateTime @default(now())
+
+  @@index([modelId])
+}
+
+/// Préférences de l'interface (langue, matière par défaut, prix au kilo…).
+model Setting {
+  key   String @id
+  value String
+}

@@ -1,0 +1,12 @@
+node_modules/
+storage/*
+!storage/.gitkeep
+prisma/dev.db
+prisma/dev.db-journal
+prisma/*.db
+.env
+.env.local
+.netlify/
+dist/
+*.log
+.DS_Store

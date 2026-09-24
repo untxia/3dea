@@ -1,0 +1,29 @@
+# Déploiement Netlify — interface statique + API en fonction serverless.
+
+[build]
+  publish  = "public"
+  command  = "npm run build:netlify"
+  functions = "netlify/functions"
+
+[build.environment]
+  NODE_VERSION = "20"
+  # Prisma doit embarquer le moteur compatible avec l'environnement Netlify.
+  PRISMA_CLI_BINARY_TARGETS = "native,rhel-openssl-3.0.x"
+
+# Toute la surface /api est servie par la fonction.
+[[redirects]]
+  from = "/api/*"
+  to   = "/.netlify/functions/api/:splat"
+  status = 200
+  force  = true
+
+[[headers]]
+  for = "/*"
+  [headers.values]
+    X-Content-Type-Options = "nosniff"
+    Referrer-Policy = "strict-origin-when-cross-origin"
+
+[[headers]]
+  for = "/index.html"
+  [headers.values]
+    Cache-Control = "public, max-age=0, must-revalidate"

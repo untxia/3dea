@@ -1,0 +1,30 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - name: Valider le schéma Prisma
+        run: npx prisma validate
+        env:
+          DATABASE_URL: "file:./ci.db"
+      - name: Générer le client
+        run: npx prisma generate
+      - name: Vérifier la syntaxe du serveur
+        run: |
+          node --check src/server.js
+          node --check src/api.js
+          node --check src/storage.js
+          node --check prisma/seed.js
+          node --check netlify/functions/api.js
