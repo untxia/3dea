@@ -41,66 +41,31 @@ c'est une décision qui vous appartient.
 
 ---
 
-## Mise en ligne sur Netlify
+## Déploiement sur Vercel
 
-Deux niveaux, au choix.
+Version en production : <https://3dea-dusky.vercel.app>.
 
-### Niveau 1 — interface seule, en deux minutes
+Vercel sert le contenu statique de `public/`, comme indiqué dans `vercel.json`.
+Le projet Vercel est relié au dépôt GitHub et se redéploie lors des nouvelles
+versions poussées sur le dépôt. Pour lancer un déploiement manuellement :
 
-Netlify sert `public/` et rien d'autre. L'application détecte l'absence d'API
-et bascule sur le stockage du navigateur : bibliothèque locale, fichiers en
-base64, tout fonctionne sauf le partage entre appareils.
+```bash
+npx vercel --prod
+```
 
-Sur Netlify : **Add new site → Import from GitHub**, puis
-*Publish directory* = `public`, *Build command* = vide. Terminé.
-
-### Niveau 2 — avec la base de données
-
-Netlify ne fait pas tourner de serveur Express permanent, et **le système de
-fichiers d'une fonction est effacé à chaque appel** : SQLite n'y survit pas.
-Il faut donc une base hébergée. Neon, Supabase ou Turso ont tous une offre
-gratuite qui suffit largement ici.
-
-1. Créez une base Postgres et récupérez son URL de connexion.
-2. Basculez le provider et poussez :
-   ```bash
-   npm run use:postgres
-   git add prisma/schema.prisma && git commit -m "base postgres" && git push
-   ```
-3. Sur Netlify, dans **Site configuration → Environment variables**, ajoutez :
-
-   | Clé | Valeur |
-   |-----|--------|
-   | `DATABASE_URL` | l'URL Postgres, avec `?sslmode=require` |
-   | `MAX_UPLOAD_MB` | `5` (voir la limite ci-dessous) |
-   | `ANTHROPIC_API_KEY` | votre clé, pour les fonctions assistées |
-
-4. Redéployez. `netlify.toml` fait le reste : il publie `public/`, construit
-   le client Prisma, applique les migrations et réécrit `/api/*` vers la
-   fonction serverless.
-
-Les fichiers STL ne vont ni en base ni sur disque : ils passent par
-**Netlify Blobs**, activé automatiquement dès que la fonction tourne.
-
-### Les fonctions assistées ont besoin d'une clé
-
-La recherche assistée, la lecture automatique des fiches et l'assistant
-d'impression appellent un modèle de langage. En ligne, cet appel passe par
-`/api/ai`, une route qui relaie la requête **avec la clé conservée côté
-serveur** — le navigateur ne la voit jamais.
-
-Sans `ANTHROPIC_API_KEY`, la route répond 503 et ces trois fonctions sont
-indisponibles. Tout le reste — bibliothèque, visionneuse, mesures, estimation
-de filament, éditeur, export STL — continue de fonctionner normalement.
-
-**Limite à connaître** : une fonction Netlify plafonne la requête entrante à
-environ 6 Mo. Un STL plus lourd sera refusé en ligne alors qu'il passe très
-bien en local. Pour dépasser cela il faudrait un envoi direct vers un stockage
-objet avec URL signée — c'est faisable, mais ce n'est pas dans ce dépôt.
+Le site publié n'inclut pas de serveur Express ni de fonction `/api`. La
+bibliothèque est conservée dans `localStorage` sur le navigateur utilisé ; elle
+n'est pas synchronisée entre appareils. Les fichiers restent soumis au quota du
+navigateur. La base Prisma/SQLite et les fonctions assistées par IA sont
+disponibles uniquement avec le serveur local décrit ci-dessous.
 
 ---
 
-## Base de données
+## Base de données locale
+
+Prisma utilise SQLite par défaut. `npm run setup` génère le client Prisma,
+crée la base locale et la peuple avec les modèles de démonstration. Cette base
+est utilisée par le serveur local, pas par le site Vercel.
 
 | Table        | Rôle |
 |--------------|------|
@@ -117,7 +82,10 @@ requête.
 
 ---
 
-## API
+## API locale
+
+Les routes ci-dessous sont servies par le serveur Express lancé avec
+`npm run dev`. Elles ne sont pas exposées par le déploiement Vercel statique.
 
 | Méthode | Route | Effet |
 |---------|-------|-------|
@@ -136,18 +104,18 @@ requête.
 
 ---
 
-## Fonctionnement sans serveur
+## Fonctionnement sur Vercel
 
-`public/index.html` est autonome. Au démarrage il appelle `/api/health` :
+La page appelle `/api/health` au démarrage. Sur Vercel, cette route n'existe
+pas : l'application passe donc en mode navigateur et conserve la bibliothèque
+dans `localStorage`. Ces données restent propres au navigateur et à l'appareil
+utilisés. Le quota disponible dépend du navigateur ; les fichiers volumineux
+peuvent ne pas être enregistrés.
 
-- **base joignable** → tout passe par Prisma, fichiers stockés côté serveur,
-  estimations archivées ;
-- **sinon** → repli silencieux sur le stockage du navigateur. Aucune
-  fonctionnalité ne disparaît, mais la bibliothèque reste locale et les
-  fichiers au-delà de 3,4 Mo ne sont pas conservés entre deux sessions.
-
-Le basculement se fait aussi en cours de route : si le serveur tombe, la
-couche de données repasse en mode navigateur sans interrompre l'utilisateur.
+La base de données, l'archivage des estimations, le stockage serveur des
+fichiers et le relais IA (`/api/ai`) nécessitent un backend et ne sont pas
+disponibles sur le site actuellement déployé. En local, ils utilisent le
+serveur Express, Prisma/SQLite et, pour l'IA, la variable `ANTHROPIC_API_KEY`.
 
 ---
 
@@ -155,16 +123,18 @@ couche de données repasse en mode navigateur sans interrompre l'utilisateur.
 
 Aucun site de modèles — Printables, Thingiverse, Cults3D — n'autorise le
 téléchargement direct depuis une page tierce : leur politique CORS l'interdit.
-Coller l'adresse d'une page enregistre donc une **fiche** : l'application lit
-la page pour en extraire titre, auteur, licence et résumé, puis vous
-téléchargez le fichier sur le site et le rattachez avec le bouton `+`.
+Avec le serveur local, coller l'adresse d'une page enregistre une **fiche** :
+le serveur lit la page pour en extraire titre, auteur, licence et résumé, puis
+vous téléchargez le fichier sur le site et le rattachez avec le bouton `+`.
+Cette lecture de page n'est pas disponible sur le déploiement Vercel statique.
 
 Un lien direct vers un `.stl` sur un hébergeur permissif — GitHub raw, GitLab,
-la plupart des CDN — est en revanche récupéré et mesuré automatiquement.
+la plupart des CDN — peut être récupéré et mesuré automatiquement lorsque le
+serveur local est utilisé.
 
 ---
 
-## Structure
+## Fichiers principaux
 
 ```
 3dea/
@@ -174,9 +144,8 @@ la plupart des CDN — est en revanche récupéré et mesuré automatiquement.
 ├── src/
 │   ├── api.js               routeur Express partagé
 │   ├── server.js            serveur local
-│   └── storage.js           disque en local, Netlify Blobs en ligne
-├── netlify/functions/api.js adaptateur serverless
+│   └── storage.js           stockage local des fichiers
 ├── scripts/use-db.js        bascule sqlite ⇄ postgresql
 ├── public/index.html        l'application entière, un seul fichier
-└── netlify.toml             publication, build, réécritures
+└── vercel.json              publication statique de public/
 ```
